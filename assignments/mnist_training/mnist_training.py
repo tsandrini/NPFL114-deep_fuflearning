@@ -27,6 +27,15 @@ parser.add_argument("--seed", default=42, type=int, help="Random seed.")
 parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
+OPTIMIZERS = {
+    'SGD':tf.keras.optimizers.SGD,
+    'Adam': tf.keras.optimizers.Adam
+}
+
+LR_SCHEDULES = {
+    'linear': tf.optimizers.schedules.PolynomialDecay,
+    'exponential': tf.optimizers.schedules.ExponentialDecay
+}
 
 def main(args: argparse.Namespace) -> float:
     # Fix random seeds and threads
@@ -75,10 +84,44 @@ def main(args: argparse.Namespace) -> float:
     #   rate manually by using `model.optimizer.learning_rate(model.optimizer.iterations)`,
     #   so after training, this value should be `args.learning_rate_final`.
 
+
+    if args.decay:
+        learning_rate = LR_SCHEDULES[args.decay]
+        lr_schedule_args = {
+            'decay_steps': int(args.epochs * mnist.train.size / args.batch_size),
+        }
+
+        if args.decay == 'linear':
+            lr_schedule_args['power'] = 1.0
+            lr_schedule_args['end_learning_rate'] = args.learning_rate_final
+        elif args.decay == 'exponential':
+            lr_schedule_args['staircase'] = False
+            lr_schedule_args['decay_rate'] = args.learning_rate_final / args.learning_rate
+
+        learning_rate = learning_rate(args.learning_rate, **lr_schedule_args)
+    else:
+        learning_rate = args.learning_rate
+
+    optimizer = OPTIMIZERS[args.optimizer]
+    optimizer_args = {
+        'learning_rate': learning_rate,
+    }
+
+    if args.optimizer == 'SGD' and args.momentum is not None:
+        optimizer_args['momentum'] = args.momentum
+
+    def get_lr_metric(optimizer):
+        def lr(y_true, y_pred):
+            return optimizer._decayed_lr(tf.float32) # I use ._decayed_lr method instead of .lr
+        return lr
+
+    optimizer = optimizer(**optimizer_args)
+    lr_metric = get_lr_metric(optimizer)
+
     model.compile(
-        optimizer=...,
+        optimizer=optimizer,
         loss=tf.losses.SparseCategoricalCrossentropy(),
-        metrics=[tf.metrics.SparseCategoricalAccuracy("accuracy")],
+        metrics=[tf.metrics.SparseCategoricalAccuracy("accuracy"), lr_metric],
     )
 
     tb_callback = tf.keras.callbacks.TensorBoard(args.logdir, histogram_freq=1, update_freq=100, profile_batch=0)
@@ -96,7 +139,7 @@ def main(args: argparse.Namespace) -> float:
         validation_data=(mnist.dev.data["images"], mnist.dev.data["labels"]),
         callbacks=[tf.keras.callbacks.LambdaCallback(on_epoch_end=evaluate_test), tb_callback],
     )
-
+    
     # Return test accuracy for ReCodEx to validate
     return logs.history["val_test_accuracy"][-1]
 
