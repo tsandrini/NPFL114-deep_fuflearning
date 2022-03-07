@@ -59,7 +59,12 @@ def main(args: argparse.Namespace) -> Tuple[List[float], List[float]]:
     for model in range(args.models):
         # TODO: Compute the accuracy on the test set for
         # the individual `models[model]`.
-        individual_accuracy = None
+        individual_accuracy = models[model].evaluate(
+            mnist.test.data['images'],
+            mnist.test.data['labels'],
+            batch_size=args.batch_size,
+            return_dict=True
+        )['accuracy']
 
         # TODO: Compute the accuracy on the test set for
         # the ensemble `models[0:model+1].
@@ -75,7 +80,27 @@ def main(args: argparse.Namespace) -> Tuple[List[float], List[float]]:
         #    and instead call `model.predict` on individual models and
         #    average the results. To measure accuracy, either do it completely
         #    manually or use `tf.metrics.SparseCategoricalAccuracy`.
-        ensemble_accuracy = None
+
+        if model > 0:
+            model_input = tf.keras.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
+            # model_outputs = [model(model_input) for model in models]
+            model_outputs = [models[idx](model_input) for idx in range(model + 1)]
+            ensemble_output = tf.keras.layers.Average()(model_outputs)
+            ensemble_model = tf.keras.Model(
+                inputs=model_input,
+                outputs=ensemble_output
+            )
+            ensemble_model.compile(
+                metrics=[tf.metrics.SparseCategoricalAccuracy(name="accuracy")]
+            )
+            ensemble_accuracy = ensemble_model.evaluate(
+                mnist.test.data['images'],
+                mnist.test.data['labels'],
+                batch_size=args.batch_size,
+                return_dict=True
+            )['accuracy']
+        else:
+            ensemble_accuracy = individual_accuracy
 
         # Store the accuracies
         individual_accuracies.append(individual_accuracy)
