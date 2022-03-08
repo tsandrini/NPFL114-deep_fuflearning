@@ -49,12 +49,31 @@ def main(args: argparse.Namespace) -> float:
     # - Dropout:
     #   Add a `tf.keras.layers.Dropout` with `args.dropout` rate after the Flatten
     #   layer and after each Dense hidden layer (but not after the output Dense layer).
+    kernel_regularizer = None
+    if args.l2 != 0:
+        kernel_regularizer = tf.keras.regularizers.L2(l2=args.l2)
 
     model = tf.keras.Sequential()
     model.add(tf.keras.layers.Flatten(input_shape=[MNIST.H, MNIST.W, MNIST.C]))
+    if args.dropout != 0:
+        model.add(tf.keras.layers.Dropout(args.dropout))
+
     for hidden_layer in args.hidden_layers:
-        model.add(tf.keras.layers.Dense(hidden_layer, activation=tf.nn.relu))
-    model.add(tf.keras.layers.Dense(MNIST.LABELS, activation=tf.nn.softmax))
+        model.add(tf.keras.layers.Dense(
+            hidden_layer,
+            activation=tf.nn.relu,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=None
+        ))
+        if args.dropout != 0:
+            model.add(tf.keras.layers.Dropout(args.dropout))
+
+    model.add(tf.keras.layers.Dense(
+        MNIST.LABELS,
+        activation=tf.nn.softmax,
+        kernel_regularizer=kernel_regularizer,
+        bias_regularizer=None
+    ))
 
     # TODO: Implement label smoothing.
     # Apply the given smoothing. You will need to change the
@@ -64,11 +83,35 @@ def main(args: argparse.Namespace) -> float:
     # (i.e., `mnist.{train,dev,test}.data["labels"]`) from indices of the gold class
     # to a full categorical distribution (you can use either NumPy or there is
     # a helper method also in the `tf.keras.utils` module).
+    loss = tf.losses.SparseCategoricalCrossentropy(),
+    metrics = [tf.metrics.SparseCategoricalAccuracy(name="accuracy")]
+
+    if args.label_smoothing != 0:
+        def label_smoothing(y_true, y_pred):
+            return tf.keras.losses.categorical_crossentropy(
+                y_true,
+                y_pred,
+                label_smoothing=args.label_smoothing
+            )
+        loss = label_smoothing
+        metrics = [tf.metrics.CategoricalAccuracy(name="accuracy")]
+        mnist.train.data['labels'] = tf.keras.utils.to_categorical(
+            mnist.train.data['labels'],
+            num_classes=mnist.LABELS
+        )
+        mnist.dev.data['labels'] = tf.keras.utils.to_categorical(
+            mnist.dev.data['labels'],
+            num_classes=mnist.LABELS
+        )
+        mnist.test.data['labels'] = tf.keras.utils.to_categorical(
+            mnist.test.data['labels'],
+            num_classes=mnist.LABELS
+        )
 
     model.compile(
         optimizer=tf.optimizers.Adam(),
-        loss=tf.losses.SparseCategoricalCrossentropy(),
-        metrics=[tf.metrics.SparseCategoricalAccuracy(name="accuracy")],
+        loss=loss,
+        metrics=metrics,
     )
 
     tb_callback = tf.keras.callbacks.TensorBoard(args.logdir, histogram_freq=1, update_freq=100, profile_batch=0)
