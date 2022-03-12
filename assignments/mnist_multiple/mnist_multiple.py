@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+# 53907afe-531b-11ea-a595-00505601122b
+# b7ea974c-d389-11e8-a4be-00505601122b
 import argparse
 import datetime
 import os
 import re
 from typing import Dict
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
 
 import numpy as np
@@ -15,9 +18,13 @@ parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=5, type=int, help="Number of epochs.")
-parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Evaluation in ReCodEx."
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -88,10 +95,15 @@ class Model(tf.keras.Model):
 
     # Create an appropriate dataset using the MNIST data.
     def create_dataset(
-        self, mnist_dataset: MNIST.Dataset, args: argparse.Namespace, training: bool = False
+        self,
+        mnist_dataset: MNIST.Dataset,
+        args: argparse.Namespace,
+        training: bool = False,
     ) -> tf.data.Dataset:
         # Start by using the original MNIST data
-        dataset = tf.data.Dataset.from_tensor_slices((mnist_dataset.data["images"], mnist_dataset.data["labels"]))
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (mnist_dataset.data["images"], mnist_dataset.data["labels"])
+        )
 
         # TODO: If `training`, shuffle the data with `buffer_size=10000` and `seed=args.seed`
 
@@ -104,6 +116,7 @@ class Model(tf.keras.Model):
         #   and "indirect_prediction".
         def create_element(images, labels):
             ...
+
         dataset = dataset.map(create_element)
 
         # TODO: Create batches of size `args.batch_size`
@@ -118,11 +131,19 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load the data
     mnist = MNIST()
@@ -135,10 +156,16 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     dev = model.create_dataset(mnist.dev, args)
 
     # Train
-    logs = model.fit(train, epochs=args.epochs, validation_data=dev, callbacks=[model.tb_callback])
+    logs = model.fit(
+        train, epochs=args.epochs, validation_data=dev, callbacks=[model.tb_callback]
+    )
 
     # Return development metrics for ReCodEx to validate
-    return {metric: values[-1] for metric, values in logs.history.items() if metric.startswith("val_")}
+    return {
+        metric: values[-1]
+        for metric, values in logs.history.items()
+        if metric.startswith("val_")
+    }
 
 
 if __name__ == "__main__":

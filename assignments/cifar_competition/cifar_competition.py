@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
+# 53907afe-531b-11ea-a595-00505601122b
+# b7ea974c-d389-11e8-a4be-00505601122b
 import argparse
 import datetime
 import os
 import re
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
+
 
 import numpy as np
 import tensorflow as tf
@@ -15,7 +19,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", default=None, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=None, type=int, help="Number of epochs.")
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
 
 
 def main(args: argparse.Namespace) -> None:
@@ -25,11 +31,19 @@ def main(args: argparse.Namespace) -> None:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load data
     cifar = CIFAR10()
@@ -39,8 +53,12 @@ def main(args: argparse.Namespace) -> None:
 
     # Generate test set annotations, but in `args.logdir` to allow parallel execution.
     os.makedirs(args.logdir, exist_ok=True)
-    with open(os.path.join(args.logdir, "cifar_competition_test.txt"), "w", encoding="utf-8") as predictions_file:
-        for probs in model.predict(cifar.test.data["images"], batch_size=args.batch_size):
+    with open(
+        os.path.join(args.logdir, "cifar_competition_test.txt"), "w", encoding="utf-8"
+    ) as predictions_file:
+        for probs in model.predict(
+            cifar.test.data["images"], batch_size=args.batch_size
+        ):
             print(np.argmax(probs), file=predictions_file)
 
 

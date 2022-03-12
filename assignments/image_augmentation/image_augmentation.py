@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+# 53907afe-531b-11ea-a595-00505601122b
+# b7ea974c-d389-11e8-a4be-00505601122b
 import argparse
 import datetime
 import os
 import re
 from typing import Dict
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
 
 import numpy as np
@@ -15,9 +18,13 @@ parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=5, type=int, help="Number of epochs.")
-parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Evaluation in ReCodEx."
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -28,11 +35,19 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load the data
     cifar = CIFAR10(size={"train": 5000, "dev": 1000})
@@ -74,13 +89,18 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     # - `args.seed` as the random seed
     logs = model.fit(
         ...,
-        shuffle=False, epochs=args.epochs,
+        shuffle=False,
+        epochs=args.epochs,
         validation_data=(cifar.dev.data["images"], cifar.dev.data["labels"]),
         callbacks=[tb_callback],
     )
 
     # Return development metrics for ReCodEx to validate
-    return {metric: values[-1] for metric, values in logs.history.items() if metric.startswith("val_")}
+    return {
+        metric: values[-1]
+        for metric, values in logs.history.items()
+        if metric.startswith("val_")
+    }
 
 
 if __name__ == "__main__":

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+# 53907afe-531b-11ea-a595-00505601122b
+# b7ea974c-d389-11e8-a4be-00505601122b
 import argparse
 import datetime
 import os
 import re
 from typing import Dict, Tuple
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
 
 import numpy as np
@@ -15,9 +18,13 @@ parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=5, type=int, help="Number of epochs.")
-parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Evaluation in ReCodEx."
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -28,11 +35,19 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load the data
     cifar = CIFAR10(size={"dev": 1000})
@@ -73,16 +88,29 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
         # fails to use a generator on a CPU when it was created on a GPU.
         generator = tf.random.Generator.from_seed(args.seed)
 
-    def train_augment(image: tf.Tensor, label: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    def train_augment(
+        image: tf.Tensor, label: tf.Tensor
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
         if generator.uniform([]) >= 0.5:
             image = tf.image.flip_left_right(image)
         image = tf.image.resize_with_crop_or_pad(image, CIFAR10.H + 6, CIFAR10.W + 6)
-        image = tf.image.resize(image, [generator.uniform([], CIFAR10.H, CIFAR10.H + 12 + 1, dtype=tf.int32),
-                                        generator.uniform([], CIFAR10.W, CIFAR10.W + 12 + 1, dtype=tf.int32)])
+        image = tf.image.resize(
+            image,
+            [
+                generator.uniform([], CIFAR10.H, CIFAR10.H + 12 + 1, dtype=tf.int32),
+                generator.uniform([], CIFAR10.W, CIFAR10.W + 12 + 1, dtype=tf.int32),
+            ],
+        )
         image = tf.image.crop_to_bounding_box(
-            image, target_height=CIFAR10.H, target_width=CIFAR10.W,
-            offset_height=generator.uniform([], maxval=tf.shape(image)[0] - CIFAR10.H + 1, dtype=tf.int32),
-            offset_width=generator.uniform([], maxval=tf.shape(image)[1] - CIFAR10.W + 1, dtype=tf.int32),
+            image,
+            target_height=CIFAR10.H,
+            target_width=CIFAR10.W,
+            offset_height=generator.uniform(
+                [], maxval=tf.shape(image)[0] - CIFAR10.H + 1, dtype=tf.int32
+            ),
+            offset_width=generator.uniform(
+                [], maxval=tf.shape(image)[1] - CIFAR10.W + 1, dtype=tf.int32
+            ),
         )
         return image, label
 
@@ -103,10 +131,16 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     dev = ...
 
     # Train
-    logs = model.fit(train, epochs=args.epochs, validation_data=dev, callbacks=[tb_callback])
+    logs = model.fit(
+        train, epochs=args.epochs, validation_data=dev, callbacks=[tb_callback]
+    )
 
     # Return development metrics for ReCodEx to validate
-    return {metric: values[-1] for metric, values in logs.history.items() if metric.startswith("val_")}
+    return {
+        metric: values[-1]
+        for metric, values in logs.history.items()
+        if metric.startswith("val_")
+    }
 
 
 if __name__ == "__main__":
