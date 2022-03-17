@@ -5,6 +5,7 @@ import argparse
 import datetime
 import os
 import re
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
 
 import numpy as np
@@ -15,11 +16,18 @@ from uppercase_data import UppercaseData
 # TODO: Set reasonable values for the hyperparameters, notably
 # for `alphabet_size` and `window` and others.
 parser = argparse.ArgumentParser()
-parser.add_argument("--alphabet_size", default=None, type=int, help="If given, use this many most frequent chars.")
+parser.add_argument(
+    "--alphabet_size",
+    default=None,
+    type=int,
+    help="If given, use this many most frequent chars.",
+)
 parser.add_argument("--batch_size", default=None, type=int, help="Batch size.")
 parser.add_argument("--epochs", default=None, type=int, help="Number of epochs.")
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
 parser.add_argument("--window", default=None, type=int, help="Window size to use.")
 
 
@@ -30,14 +38,25 @@ def main(args: argparse.Namespace) -> None:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load data
     uppercase_data = UppercaseData(args.window, args.alphabet_size)
+    print(uppercase_data.train.alphabet)
+    # for x in uppercase_data.train.dataset.take(5).as_numpy_iterator():
+    #     print(x)
 
     # TODO: Implement a suitable model, optionally including regularization, select
     # good hyperparameters and train the model.
@@ -59,15 +78,17 @@ def main(args: argparse.Namespace) -> None:
     #   You can then flatten the one-hot encoded windows and follow with a dense layer.
     # - Alternatively, you can use `tf.keras.layers.Embedding` (which is an efficient
     #   implementation of one-hot encoding followed by a Dense layer) and flatten afterwards.
-    model = ...
+    # model = ...
 
     # TODO: Generate correctly capitalized test set.
     # Use `uppercase_data.test.text` as input, capitalize suitable characters,
     # and write the result to predictions_file (which is
     # `uppercase_test.txt` in the `args.logdir` directory).
     os.makedirs(args.logdir, exist_ok=True)
-    with open(os.path.join(args.logdir, "uppercase_test.txt"), "w", encoding="utf-8") as predictions_file:
-        ...
+    with open(
+        os.path.join(args.logdir, "uppercase_test.txt"), "w", encoding="utf-8"
+    ) as predictions_file:
+        pass
 
 
 if __name__ == "__main__":
