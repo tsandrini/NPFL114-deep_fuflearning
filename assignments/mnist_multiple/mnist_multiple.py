@@ -44,6 +44,43 @@ class Model(tf.keras.Model):
         # - flattening layer,
         # - fully connected layer with 200 neurons and ReLU activation,
         # obtaining a 200-dimensional feature representation FI of each image.
+        h1 = tf.keras.layers.Conv2D(
+            10, (3, 3), strides=2, padding="valid", activation="relu"
+        )
+        h2 = tf.keras.layers.Conv2D(
+            20, (3, 3), strides=2, padding="valid", activation="relu"
+        )
+        h3 = tf.keras.layers.Flatten()
+        h4 = tf.keras.layers.Dense(200, activation="relu")
+
+        def _build_model(image):
+            x = h1(image)
+            x = h2(x)
+            x = h3(x)
+            return h4(x)
+
+        models = [_build_model(image) for image in images]
+
+        # direct_prediction
+        x = tf.keras.layers.Concatenate()(models)
+        x = tf.keras.layers.Dense(200, activation="relu")(x)
+        direct_pred = tf.keras.layers.Dense(1, activation="sigmoid")(x)
+
+        # digit_1 & digit_2
+        digit_layer = tf.keras.layers.Dense(10, activation="softmax")
+        digit_predictions = [digit_layer(model) for model in models]
+
+        # indirect_prediction
+        # indirect_pred = tf.keras.layers.Dense(1, activation="sigmoid")(
+        #     digit_predictions
+        # )
+        indirect_pred = tf.cast(
+            tf.math.greater(
+                tf.math.argmax(digit_predictions[0], axis=1),
+                tf.math.argmax(digit_predictions[1], axis=1),
+            ),
+            tf.int32,
+        )
 
         # TODO: Using the computed representations, the model should produce four outputs:
         # - first, compute _direct prediction_ whether the first digit is
@@ -59,10 +96,10 @@ class Model(tf.keras.Model):
         #   is greater than second, by comparing the predictions from the above
         #   two outputs.
         outputs = {
-            "direct_prediction": ...,
-            "digit_1": ...,
-            "digit_2": ...,
-            "indirect_prediction": ...,
+            "direct_prediction": direct_pred,
+            "digit_1": digit_predictions[0],
+            "digit_2": digit_predictions[1],
+            "indirect_prediction": indirect_pred,
         }
 
         # Finally, construct the model.
@@ -79,16 +116,17 @@ class Model(tf.keras.Model):
         # the accuracy of both the direct and indirect predictions; name both
         # metrics "accuracy" (i.e., pass "accuracy" as the first argument of
         # the metric object).
+
         self.compile(
             optimizer=tf.keras.optimizers.Adam(),
             loss={
-                "direct_prediction": ...,
-                "digit_1": ...,
-                "digit_2": ...,
+                "direct_prediction": tf.keras.losses.BinaryCrossentropy(),
+                "digit_1": tf.keras.losses.SparseCategoricalCrossentropy(),
+                "digit_2": tf.keras.losses.SparseCategoricalCrossentropy(),
             },
             metrics={
-                "direct_prediction": [...],
-                "indirect_prediction": [...],
+                "direct_prediction": [tf.keras.metrics.BinaryAccuracy("accuracy")],
+                "indirect_prediction": [tf.keras.metrics.BinaryAccuracy("accuracy")],
             },
         )
         self.tb_callback = tf.keras.callbacks.TensorBoard(args.logdir)
@@ -106,8 +144,11 @@ class Model(tf.keras.Model):
         )
 
         # TODO: If `training`, shuffle the data with `buffer_size=10000` and `seed=args.seed`
+        if training:
+            dataset = dataset.shuffle(10000, seed=args.seed)
 
         # TODO: Combine pairs of examples by creating batches of size 2
+        dataset = dataset.batch(2)
 
         # TODO: Map pairs of images to elements suitable for our model. Notably,
         # the elements should be pairs `(input, output)`, with
@@ -115,11 +156,24 @@ class Model(tf.keras.Model):
         # - `output` being a dictionary with keys "digit_1", "digit_2", "direct_prediction",
         #   and "indirect_prediction".
         def create_element(images, labels):
-            ...
+            return (
+                (images[0], images[1]),
+                {
+                    "digit_1": labels[0],
+                    "digit_2": labels[1],
+                    "direct_prediction": tf.cast(
+                        tf.math.greater(labels[0], labels[1]), tf.int32
+                    ),
+                    "indirect_prediction": tf.cast(
+                        tf.math.greater(labels[0], labels[1]), tf.int32
+                    ),
+                },
+            )
 
         dataset = dataset.map(create_element)
 
         # TODO: Create batches of size `args.batch_size`
+        dataset = dataset.batch(args.batch_size)
 
         return dataset
 
