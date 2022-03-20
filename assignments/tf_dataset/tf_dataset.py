@@ -79,8 +79,12 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     # of `from_tensor_slices` -- in our case we want each example to
     # be a pair of `(input_image, target_label)`, so we need to pass
     # a pair `(data["images"], data["labels"])` to `from_tensor_slices`.
-    train = ...
-    dev = ...
+    train = tf.data.Dataset.from_tensor_slices(
+        (cifar.train.data["images"], cifar.train.data["labels"])
+    )
+    dev = tf.data.Dataset.from_tensor_slices(
+        (cifar.dev.data["images"], cifar.dev.data["labels"])
+    )
 
     # Simple data augmentation
     with tf.device("/cpu:0"):
@@ -124,11 +128,17 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     #   the last call -- it allows the pipeline to run in parallel with
     #   the training process, dynamically adjusting the number of threads
     #   to fully saturate the training process
-    train = ...
+    train = (
+        train.take(5000)
+        .shuffle(5000, seed=args.seed)
+        .map(train_augment)
+        .batch(args.batch_size)
+        .prefetch(tf.data.AUTOTUNE)
+    )
 
     # TODO: Prepare the `dev` pipeline
     # - just use `.batch(args.batch_size)` to generate batches
-    dev = ...
+    dev = dev.batch(args.batch_size)
 
     # Train
     logs = model.fit(
