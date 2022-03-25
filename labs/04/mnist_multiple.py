@@ -47,7 +47,7 @@ class Model(tf.keras.Model):
         # - then, classify the computed representation FI of the first image using
         #   a densely connected softmax layer into 10 classes;
         # - then, classify the computed representation FI of the second image using
-        #   the same connected layer (with shared weights) into 10 classes;
+        #   the same layer (identical, i.e., with shared weights) into 10 classes;
         # - finally, compute _indirect prediction_ whether the first digit
         #   is greater than second, by comparing the predictions from the above
         #   two outputs.
@@ -67,11 +67,11 @@ class Model(tf.keras.Model):
         # the keys of the `outputs` dictionary.
         self.output_names = sorted(outputs.keys())
 
-        # TODO: Train the model by computing appropriate losses of
-        # "direct_prediction", "digit_1", "digit_2". Regarding metrics, compute
-        # the accuracy of both the direct and indirect predictions; name both
-        # metrics "accuracy" (i.e., pass "accuracy" as the first argument of
-        # the metric object).
+        # TODO: Define the appropriate losses for the model outputs
+        # "direct_prediction", "digit_1", "digit_2". Regarding metrics,
+        # the accuracy of both the direct and indirect predictions should be
+        # computed; name both metrics "accuracy" (i.e., pass "accuracy" as the
+        # first argument of the metric object).
         self.compile(
             optimizer=tf.keras.optimizers.Adam(),
             loss={
