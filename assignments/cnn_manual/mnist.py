@@ -1,0 +1,1 @@
+/home/tsandrini/Study/MFF/NPFL114-hluboke_uceni/NPFL114-deep_fuflearning/labs/05/mnist.py
