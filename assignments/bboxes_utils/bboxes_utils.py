@@ -20,6 +20,22 @@ BOTTOM: int = 2
 RIGHT: int = 3
 
 
+def _ob_height(x: Tensor) -> Tensor:
+    return BACKEND.maximum(x[..., BOTTOM] - x[..., TOP], 0)
+
+
+def _ob_width(x: Tensor) -> Tensor:
+    return BACKEND.maximum(x[..., RIGHT] - x[..., LEFT], 0)
+
+
+def _ob_x_center(x: Tensor) -> Tensor:
+    return _ob_width(x) / 2 + x[..., LEFT]
+
+
+def _ob_y_center(x: Tensor) -> Tensor:
+    return _ob_height(x) / 2 + x[..., TOP]
+
+
 def bboxes_area(bboxes: Tensor) -> Tensor:
     """Compute area of given set of bboxes.
 
@@ -79,27 +95,10 @@ def bboxes_to_fast_rcnn(anchors: Tensor, bboxes: Tensor) -> Tensor:
     If the anchors.shape is [anchors_len, 4], bboxes.shape is [anchors_len, 4],
     the output shape is [anchors_len, 4].
     """
+    out = BACKEND.zeros(anchors.shape, dtype=anchors.dtype)
 
-    def _ob_height(x: Tensor) -> Tensor:
-        return BACKEND.maximum(x[..., BOTTOM] - x[..., TOP], 0)
-
-    def _ob_width(x: Tensor) -> Tensor:
-        return BACKEND.maximum(x[..., RIGHT] - x[..., LEFT], 0)
-
-    def _ob_x_center(x: Tensor) -> Tensor:
-        return _ob_width(x) / 2
-
-    def _ob_y_center(x: Tensor) -> Tensor:
-        return _ob_height(x) / 2
-
-    out = BACKEND.zeros(bboxes.shape, dtype=bboxes.dtype)
-
-    out[..., 0] = BACKEND.maximum(
-        _ob_y_center(bboxes) - _ob_y_center(anchors), 0
-    ) / _ob_height(anchors)
-    out[..., 1] = BACKEND.maximum(
-        _ob_x_center(bboxes) - _ob_x_center(anchors), 0
-    ) / _ob_width(anchors)
+    out[..., 0] = (_ob_y_center(bboxes) - _ob_y_center(anchors)) / _ob_height(anchors)
+    out[..., 1] = (_ob_x_center(bboxes) - _ob_x_center(anchors)) / _ob_width(anchors)
     out[..., 2] = BACKEND.log(_ob_height(bboxes) / _ob_height(anchors))
     out[..., 3] = BACKEND.log(_ob_width(bboxes) / _ob_width(anchors))
 
@@ -112,9 +111,18 @@ def bboxes_from_fast_rcnn(anchors: Tensor, fast_rcnns: Tensor) -> Tensor:
     The anchors.shape is [anchors_len, 4], fast_rcnns.shape is [anchors_len, 4],
     the output shape is [anchors_len, 4].
     """
+    out = BACKEND.zeros(anchors.shape, dtype=anchors.dtype)
+    y = fast_rcnns[..., 0] * _ob_height(anchors) + _ob_y_center(anchors)
+    x = fast_rcnns[..., 1] * _ob_width(anchors) + _ob_x_center(anchors)
+    h = _ob_height(anchors) * BACKEND.exp(fast_rcnns[..., 2])
+    w = _ob_width(anchors) * BACKEND.exp(fast_rcnns[..., 3])
 
-    # TODO: Implement according to the docstring.
-    raise NotImplementedError()
+    out[..., TOP] = y - h / 2
+    out[..., LEFT] = x - w / 2
+    out[..., BOTTOM] = out[..., TOP] + h
+    out[..., RIGHT] = out[..., LEFT] + w
+
+    return out
 
 
 def bboxes_training(
@@ -147,15 +155,31 @@ def bboxes_training(
       (again the one with smaller index if there are several), and if the IoU
       is >= iou_threshold, assign the object to the anchor.
     """
+    anchor_classes = BACKEND.zeros([anchors.shape[0]], dtype=BACKEND.int32)
+    anchor_bboxes = BACKEND.zeros([anchors.shape[0], 4], dtype=BACKEND.float32)
 
     # TODO: First, for each gold object, assign it to an anchor with the
     # largest IoU (the one with smaller index if there are several). In case
     # several gold objects are assigned to a single anchor, use the gold object
     # with smaller index.
+    for i, bbox in zip(range(gold_bboxes.shape[0]), gold_bboxes):
+        idx = BACKEND.argmax(bboxes_iou(bbox, anchors))
+        if anchor_classes[idx] == 0 or (1 + gold_classes[i]) < anchor_classes[idx]:
+            anchor_classes[idx] = 1 + gold_classes[i]
+            anchor_bboxes[idx] = bboxes_to_fast_rcnn(anchors[idx], bbox)
 
     # TODO: For each unused anchor, find the gold object with the largest IoU
     # (again the one with smaller index if there are several), and if the IoU
     # is >= threshold, assign the object to the anchor.
+    for i, anchor in zip(range(anchors.shape[0]), anchors):
+        if anchor_classes[i] > 0:
+            continue
+
+        iou = bboxes_iou(anchor, gold_bboxes)
+        idx = BACKEND.argmax(iou)
+        if iou[idx] >= iou_threshold:
+            anchor_classes[i] = 1 + gold_classes[idx]
+            anchor_bboxes[i] = bboxes_to_fast_rcnn(anchors[i], gold_bboxes[idx])
 
     return anchor_classes, anchor_bboxes
 
@@ -192,9 +216,9 @@ class Tests(unittest.TestCase):
             np.testing.assert_almost_equal(
                 bboxes_to_fast_rcnn(anchors, bboxes), fast_rcnns, decimal=3
             )
-            # np.testing.assert_almost_equal(
-            #     bboxes_from_fast_rcnn(anchors, fast_rcnns), bboxes, decimal=3
-            # )
+            np.testing.assert_almost_equal(
+                bboxes_from_fast_rcnn(anchors, fast_rcnns), bboxes, decimal=3
+            )
 
     def test_bboxes_training(self):
         anchors = np.array(
@@ -270,11 +294,11 @@ class Tests(unittest.TestCase):
             gold_bboxes, anchor_bboxes = np.array(gold_bboxes, np.float32), np.array(
                 anchor_bboxes, np.float32
             )
-            # computed_classes, computed_bboxes = bboxes_training(
-            #     anchors, gold_classes, gold_bboxes, iou
-            # )
-            # np.testing.assert_almost_equal(computed_classes, anchor_classes, decimal=3)
-            # np.testing.assert_almost_equal(computed_bboxes, anchor_bboxes, decimal=3)
+            computed_classes, computed_bboxes = bboxes_training(
+                anchors, gold_classes, gold_bboxes, iou
+            )
+            np.testing.assert_almost_equal(computed_classes, anchor_classes, decimal=3)
+            np.testing.assert_almost_equal(computed_bboxes, anchor_bboxes, decimal=3)
 
 
 if __name__ == "__main__":
