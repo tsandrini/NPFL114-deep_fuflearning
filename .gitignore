@@ -132,3 +132,7 @@ dmypy.json
 logs/
 
 *.npz
+
+
+# custom datasets
+czech_cac.zip
