@@ -87,7 +87,7 @@ class Model(tf.keras.Model):
             # - Compute projected source states by passing `self.source_states` through the
             #   `self.lemmatizer.attention_source_layer`. Because `self.source_states` do not change,
             #   you should in fact precompute the projected source states once in `initialize`.
-            # - Compute projected decoder state by passing `states` though `self.lemmatizer.attention_state_layer`.
+            # - Compute projected decoder state by passing `states` through `self.lemmatizer.attention_state_layer`.
             # - Sum the two projections. However, the first has shape [a, b, c] and the second [a, c]. Therefore,
             #   expand the second to [a, b, c] or [a, 1, c] (the latter works because of broadcasting rules).
             # - Pass the sum through `tf.tanh` and through the `self.lemmatizer.attention_weight_layer`.
@@ -190,10 +190,11 @@ class Model(tf.keras.Model):
         # However, convert the embedded sequences from a RaggedTensor to a dense Tensor first,
         # i.e., call the `source_rnn` with
         #   (source_embedded.to_tensor(), mask=tf.sequence_mask(source_embedded.row_lengths()))
-        sources_states = None
+        source_states = None
 
-        # Run the appropriate decoder. Note that the outputs of the decoders
-        # are exactly the outputs of `tfa.seq2seq.dynamic_decode`.
+        # Run the appropriate decoder. The decoder is called as any other layer, and internally
+        # uses `tfa.seq2seq.dynamic_decode` to run the decoding step as many times as required.
+        # The result of the decoder call is exactly the result of the `tfa.seq2seq.dynamic_decode`.
         if targets is not None:
             # TODO(lemmatizer_noattn): Create a self.DecoderTraining by passing `self` to its constructor.
             # Then run it on `[source_states, target_charseqs]` input,
@@ -208,7 +209,7 @@ class Model(tf.keras.Model):
             #
             # Then run it on `source_states`, storing the first result in `output`
             # and the third result in `output_lens`. Finally, because we do not want
-            # to return the `[EOW]` symbols, decrease `output_lens` by one.
+            # to return the `[EOW]` symbols, subtract one from `output_lens`.
             raise NotImplementedError()
 
         # Reshape the output to the original matrix of lemmas
@@ -231,7 +232,7 @@ class Model(tf.keras.Model):
 
         with tf.GradientTape() as tape:
             y_pred = self(x, targets=y_targets, training=True)
-            loss = self.compute_loss(x, y_targets.values, y_pred.values)
+            loss = self.compute_loss(x, y_targets.flat_values, y_pred.flat_values)
         self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
         return {"loss": metric.result() for metric in self.metrics if metric.name == "loss"}
 
@@ -244,9 +245,8 @@ class Model(tf.keras.Model):
 
     def test_step(self, data):
         x, y = data
-        y_pred = self.predict_step(data)
-        self.compiled_metrics.update_state(
-            tf.ones_like(y.values, dtype=tf.int32), tf.cast(y_pred.values == y.values, tf.int32))
+        y_pred = self.predict_step(x)
+        self.compiled_metrics.update_state(tf.ones_like(y, dtype=tf.int32), tf.cast(y_pred == y, tf.int32))
         return {m.name: m.result() for m in self.metrics if m.name != "loss"}
 
 

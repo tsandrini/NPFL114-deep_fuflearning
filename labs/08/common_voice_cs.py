@@ -25,7 +25,7 @@ class CommonVoiceCs:
         example = tf.io.parse_single_example(example, {
             "mfccs": tf.io.VarLenFeature(tf.float32),
             "sentence": tf.io.FixedLenFeature([], tf.string)})
-        example["mfccs"] = tf.reshape(tf.cast(tf.sparse.to_dense(example["mfccs"]), tf.float32), [-1, CommonVoiceCs.MFCC_DIM])
+        example["mfccs"] = tf.reshape(tf.sparse.to_dense(example["mfccs"]), [-1, CommonVoiceCs.MFCC_DIM])
         return example
 
     def __init__(self) -> None:
@@ -35,8 +35,8 @@ class CommonVoiceCs:
                 print("Downloading file {}...".format(path), file=sys.stderr)
                 urllib.request.urlretrieve("{}/{}".format(self._URL, path), filename=path)
 
-            setattr(self, dataset,
-                    tf.data.TFRecordDataset(path).map(CommonVoiceCs.parse).apply(tf.data.experimental.assert_cardinality(size)))
+            setattr(self, dataset, tf.data.TFRecordDataset(path).map(CommonVoiceCs.parse).apply(
+                tf.data.experimental.assert_cardinality(size)))
 
         self._letters_mapping = tf.keras.layers.StringLookup(vocabulary=self.LETTERS[1:])
 
@@ -55,7 +55,7 @@ class CommonVoiceCs:
         return audio[:, 0], sample_rate
 
     @staticmethod
-    def mfcc_extract(audio: tf.Tensor, sample_rate: int =16000) -> tf.Tensor:
+    def mfcc_extract(audio: tf.Tensor, sample_rate: int = 16000) -> tf.Tensor:
         assert sample_rate == 16000, "Only 16k sample rate is supported"
 
         # A 1024-point STFT with frames of 64 ms and 75% overlap.
@@ -102,8 +102,8 @@ class CommonVoiceCs:
         edit_distance = CommonVoiceCs.EditDistanceMetric()
         for i in range(0, len(gold), 16):
             edit_distance(
-                tf.ragged.constant([list(sentence) for sentence in gold[i:i+16]], tf.string),
-                tf.ragged.constant([list(sentence) for sentence in predictions[i:i+16]], tf.string),
+                tf.ragged.constant([list(sentence) for sentence in gold[i:i + 16]], tf.string),
+                tf.ragged.constant([list(sentence) for sentence in predictions[i:i + 16]], tf.string),
             )
 
         return 100 * edit_distance.result()

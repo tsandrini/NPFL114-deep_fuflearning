@@ -154,10 +154,11 @@ class Model(tf.keras.Model):
         # TODO: Embed source_charseqs using `source_embedding`.
 
         # TODO: Run source_rnn on the embedded sequences, returning outputs in `source_states`.
-        sources_states = None
+        source_states = None
 
-        # Run the appropriate decoder. Note that the outputs of the decoders
-        # are exactly the outputs of `tfa.seq2seq.dynamic_decode`.
+        # Run the appropriate decoder. The decoder is called as any other layer, and internally
+        # uses `tfa.seq2seq.dynamic_decode` to run the decoding step as many times as required.
+        # The result of the decoder call is exactly the result of the `tfa.seq2seq.dynamic_decode`.
         if targets is not None:
             # TODO: Create a self.DecoderTraining by passing `self` to its constructor.
             # Then run it on `[source_states, target_charseqs]` input,
@@ -195,7 +196,7 @@ class Model(tf.keras.Model):
 
         with tf.GradientTape() as tape:
             y_pred = self(x, targets=y_targets, training=True)
-            loss = self.compute_loss(x, y_targets.values, y_pred.values)
+            loss = self.compute_loss(x, y_targets.flat_values, y_pred.flat_values)
         self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
         return {"loss": metric.result() for metric in self.metrics if metric.name == "loss"}
 
@@ -208,9 +209,8 @@ class Model(tf.keras.Model):
 
     def test_step(self, data):
         x, y = data
-        y_pred = self.predict_step(data)
-        self.compiled_metrics.update_state(
-            tf.ones_like(y.values, dtype=tf.int32), tf.cast(y_pred.values == y.values, tf.int32))
+        y_pred = self.predict_step(x)
+        self.compiled_metrics.update_state(tf.ones_like(y, dtype=tf.int32), tf.cast(y_pred == y, tf.int32))
         return {m.name: m.result() for m in self.metrics if m.name != "loss"}
 
 

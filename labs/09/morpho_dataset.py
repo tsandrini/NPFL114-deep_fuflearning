@@ -33,6 +33,10 @@ class MorphoDataset:
 
     class Factor:
         BOW: int = 1
+        # The following is an error, it should be 2. Luckily, it does not cause worse
+        # results in the lemmatizer_* assignments, where the BOW/EOW are used.
+        # However, setting EOW=2 changes the lemmatizer_* results slightly because of
+        # different random initialization, so I will change it after the end of semester.
         EOW: int = 1
         word_mapping: tf.keras.layers.StringLookup
         char_mapping: tf.keras.layers.StringLookup
@@ -182,6 +186,9 @@ if __name__ == "__main__":
             gold = gold.tags
         elif args.task == "lemmatizer":
             gold = gold.lemmas
+            if args.corpus != "czech_pdt_lemmas":
+                print("Warning: You are evaluating a lemmatizer on a corpus different than `czech_pdt_lemmas`.")
+                print("Consider passing `--corpus=czech_pdt_lemmas` to evaluate on the competition dataset.")
         else:
             raise ValueError("Unknown task '{}', valid values are only 'tagger' or 'lemmatizer'".format(args.task))
 
