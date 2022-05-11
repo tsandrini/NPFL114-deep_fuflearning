@@ -33,11 +33,11 @@ def main(args: argparse.Namespace) -> None:
         ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
     ))
 
-    # Load the Electra Czech small lowercased
+    # Load the pre-trained RobeCzech model
     tokenizer = transformers.AutoTokenizer.from_pretrained("ufal/robeczech-base")
     robeczech = transformers.TFAutoModel.from_pretrained("ufal/robeczech-base")
 
-    # Load the data.
+    # Load the data
     dataset = ReadingComprehensionDataset()
 
     # TODO: Create the model and train it
