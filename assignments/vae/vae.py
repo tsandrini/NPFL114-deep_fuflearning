@@ -6,6 +6,7 @@ import datetime
 import os
 import re
 from typing import Any, Dict
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
 
 import numpy as np
@@ -17,14 +18,26 @@ from mnist import MNIST
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
-parser.add_argument("--dataset", default="mnist", type=str, help="MNIST-like dataset to use.")
-parser.add_argument("--decoder_layers", default=[500, 500], type=int, nargs="+", help="Decoder layers.")
-parser.add_argument("--encoder_layers", default=[500, 500], type=int, nargs="+", help="Encoder layers.")
+parser.add_argument(
+    "--dataset", default="mnist", type=str, help="MNIST-like dataset to use."
+)
+parser.add_argument(
+    "--decoder_layers", default=[500, 500], type=int, nargs="+", help="Decoder layers."
+)
+parser.add_argument(
+    "--encoder_layers", default=[500, 500], type=int, nargs="+", help="Encoder layers."
+)
 parser.add_argument("--epochs", default=50, type=int, help="Number of epochs.")
-parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Evaluation in ReCodEx."
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
-parser.add_argument("--train_size", default=None, type=int, help="Limit on the train set size.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
+parser.add_argument(
+    "--train_size", default=None, type=int, help="Limit on the train set size."
+)
 parser.add_argument("--z_dim", default=100, type=int, help="Dimension of Z.")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
@@ -36,7 +49,9 @@ class VAE(tf.keras.Model):
 
         self._seed = args.seed
         self._z_dim = args.z_dim
-        self._z_prior = tfp.distributions.Normal(tf.zeros(args.z_dim), tf.ones(args.z_dim))
+        self._z_prior = tfp.distributions.Normal(
+            tf.zeros(args.z_dim), tf.ones(args.z_dim)
+        )
 
         # TODO: Define `self.encoder` as a `tf.keras.Model`, which
         # - takes input images with shape `[MNIST.H, MNIST.W, MNIST.C]`
@@ -46,7 +61,15 @@ class VAE(tf.keras.Model):
         # - generate two outputs `z_mean` and `z_sd`, each passing the result
         #   of the above bullet through its own dense layer of `args.z_dim` units,
         #   with `z_sd` using exponential function as activation to keep it positive.
-        self.encoder = None
+        enc_inputs = tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C])
+        enc_hidden = tf.keras.layers.Flatten()(enc_inputs)
+        for size in args.encoder_layers:
+            enc_hidden = tf.keras.layers.Dense(size, activation="relu")(enc_hidden)
+        z_mean, z_sd = (
+            tf.keras.layers.Dense(args.z_dim, activation=None)(enc_hidden),
+            tf.keras.layers.Dense(args.z_dim, activation="exponential")(enc_hidden),
+        )
+        self.encoder = tf.keras.Model(inputs=enc_inputs, outputs=[z_mean, z_sd])
 
         # TODO: Define `self.decoder` as a `tf.keras.Model`, which
         # - takes vectors of `[args.z_dim]` shape on input
@@ -55,7 +78,15 @@ class VAE(tf.keras.Model):
         # - applies output dense layer with `MNIST.H * MNIST.W * MNIST.C` units
         #   and a suitable output activation
         # - reshapes the output (`tf.keras.layers.Reshape`) to `[MNIST.H, MNIST.W, MNIST.C]`
-        self.decoder = None
+        dec_inputs = tf.keras.layers.Input(shape=[args.z_dim])
+        dec_hidden = dec_inputs
+        for size in args.decoder_layers:
+            dec_hidden = tf.keras.layers.Dense(size, activation="relu")(dec_hidden)
+        dec_hidden = tf.keras.layers.Dense(
+            MNIST.H * MNIST.W * MNIST.C, activation="sigmoid"
+        )(dec_hidden)
+        dec_outputs = tf.keras.layers.Reshape([MNIST.H, MNIST.W, MNIST.C])(dec_hidden)
+        self.decoder = tf.keras.Model(inputs=dec_inputs, outputs=dec_outputs)
 
         self.tb_callback = tf.keras.callbacks.TensorBoard(args.logdir)
 
@@ -63,6 +94,7 @@ class VAE(tf.keras.Model):
         with tf.GradientTape() as tape:
             # TODO: Compute `z_mean` and `z_sd` of the given images using `self.encoder`.
             # Note that you should pass `training=True` to the `self.encoder`.
+            z_mean, z_sd = self.encoder(images, training=True)
 
             # TODO: Sample `z` from a Normal distribution with mean `z_mean` and
             # standard deviation `z_sd`. Start by creating corresponding
@@ -73,49 +105,83 @@ class VAE(tf.keras.Model):
             # so you do not need to implement the reparametrization trick manually.
             # For a given distribution, you can use the `reparameterization_type` member
             # to check if it is reparametrized or not.
+            gaussian = tfp.distributions.Normal(z_mean, z_sd)
+            z = gaussian.sample(seed=self._seed)
 
             # TODO: Decode images using `z` (also passing `training=True` to the `self.decoder`).
+            decoded_z = self.decoder(z, training=True)
 
             # TODO: Define `reconstruction_loss` using the `self.compiled_loss`.
-            reconstruction_loss = None
+            reconstruction_loss = self.compiled_loss(images, decoded_z)
 
             # TODO: Define `latent_loss` as a mean of KL divergences of suitable distributions.
             # Note that the `tfp` distributions offer a method `kl_divergence`.
-            latent_loss = None
+            latent_loss = tf.reduce_mean(
+                gaussian.kl_divergence(
+                    self._z_prior
+                    # tfp.distributions.Uniform(0.0, 1.0)
+                    # tfp.distributions.Normal(
+                    #     tf.math.reduce_mean(images, axis=[1, 2, 3]),
+                    #     tf.math.reduce_std(images, axis=[1, 2, 3]),
+                    # )
+                ),
+            )
 
             # TODO: Define `loss` as a sum of the `reconstruction_loss` (multiplied by the number
             # of pixels in an image) and the `latent_loss` (multiplied by self._z_dim).
-            loss = None
+            loss = (
+                MNIST.H * MNIST.W * MNIST.C
+            ) * reconstruction_loss + self._z_dim * latent_loss
 
         # TODO: Run an optimizer step with respect to trainable variables of both the encoder and the decoder.
+        self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
 
-        return {"reconstruction_loss": reconstruction_loss, "latent_loss": latent_loss, "loss": loss}
+        return {
+            "reconstruction_loss": reconstruction_loss,
+            "latent_loss": latent_loss,
+            "loss": loss,
+        }
 
     def generate(self, epoch: int, logs: Dict[str, tf.Tensor]) -> None:
         GRID = 20
 
         # Generate GRIDxGRID images
-        random_images = self.decoder(self._z_prior.sample(GRID * GRID, seed=self._seed), training=False)
+        random_images = self.decoder(
+            self._z_prior.sample(GRID * GRID, seed=self._seed), training=False
+        )
 
         # Generate GRIDxGRID interpolated images
         if self._z_dim == 2:
             # Use 2D grid for sampled Z
-            starts = tf.stack([-2 * tf.ones(GRID), tf.linspace(-2., 2., GRID)], -1)
-            ends = tf.stack([2 * tf.ones(GRID), tf.linspace(-2., 2., GRID)], -1)
+            starts = tf.stack([-2 * tf.ones(GRID), tf.linspace(-2.0, 2.0, GRID)], -1)
+            ends = tf.stack([2 * tf.ones(GRID), tf.linspace(-2.0, 2.0, GRID)], -1)
         else:
             # Generate random Z
             starts = self._z_prior.sample(GRID, seed=self._seed)
             ends = self._z_prior.sample(GRID, seed=self._seed)
         interpolated_z = tf.concat(
-            [starts[i] + (ends[i] - starts[i]) * tf.linspace(0., 1., GRID)[:, tf.newaxis] for i in range(GRID)],
-            axis=0)
+            [
+                starts[i]
+                + (ends[i] - starts[i]) * tf.linspace(0.0, 1.0, GRID)[:, tf.newaxis]
+                for i in range(GRID)
+            ],
+            axis=0,
+        )
         interpolated_images = self.decoder(interpolated_z, training=False)
 
         # Stack the random images, then an empty row, and finally interpolated images
         image = tf.concat(
-            [tf.concat(list(images), axis=1) for images in tf.split(random_images, GRID)] +
-            [tf.zeros([MNIST.H, MNIST.W * GRID, MNIST.C])] +
-            [tf.concat(list(images), axis=1) for images in tf.split(interpolated_images, GRID)], axis=0)
+            [
+                tf.concat(list(images), axis=1)
+                for images in tf.split(random_images, GRID)
+            ]
+            + [tf.zeros([MNIST.H, MNIST.W * GRID, MNIST.C])]
+            + [
+                tf.concat(list(images), axis=1)
+                for images in tf.split(interpolated_images, GRID)
+            ],
+            axis=0,
+        )
         with self.tb_callback._train_writer.as_default(step=epoch):
             tf.summary.image("images", image[tf.newaxis])
 
@@ -127,11 +193,19 @@ def main(args: argparse.Namespace) -> float:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load data
     mnist = MNIST(args.dataset, size={"train": args.train_size})
@@ -142,8 +216,14 @@ def main(args: argparse.Namespace) -> float:
     # Create the network and train
     network = VAE(args)
     network.compile(optimizer=tf.optimizers.Adam(), loss=tf.losses.BinaryCrossentropy())
-    logs = network.fit(train, epochs=args.epochs, callbacks=[
-        tf.keras.callbacks.LambdaCallback(on_epoch_end=network.generate), network.tb_callback])
+    logs = network.fit(
+        train,
+        epochs=args.epochs,
+        callbacks=[
+            tf.keras.callbacks.LambdaCallback(on_epoch_end=network.generate),
+            network.tb_callback,
+        ],
+    )
 
     # Return loss for ReCodEx to validate
     return logs.history["loss"][-1]
