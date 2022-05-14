@@ -6,6 +6,7 @@ import datetime
 import os
 import re
 from typing import Any, Dict
+
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # Report only TF errors by default
 
 import numpy as np
@@ -17,14 +18,30 @@ from mnist import MNIST
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=50, type=int, help="Batch size.")
-parser.add_argument("--dataset", default="mnist", type=str, help="MNIST-like dataset to use.")
-parser.add_argument("--discriminator_layers", default=[128], type=int, nargs="+", help="Discriminator layers.")
+parser.add_argument(
+    "--dataset", default="mnist", type=str, help="MNIST-like dataset to use."
+)
+parser.add_argument(
+    "--discriminator_layers",
+    default=[128],
+    type=int,
+    nargs="+",
+    help="Discriminator layers.",
+)
 parser.add_argument("--epochs", default=50, type=int, help="Number of epochs.")
-parser.add_argument("--generator_layers", default=[128], type=int, nargs="+", help="Generator layers.")
-parser.add_argument("--recodex", default=False, action="store_true", help="Evaluation in ReCodEx.")
+parser.add_argument(
+    "--generator_layers", default=[128], type=int, nargs="+", help="Generator layers."
+)
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Evaluation in ReCodEx."
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed.")
-parser.add_argument("--threads", default=1, type=int, help="Maximum number of threads to use.")
-parser.add_argument("--train_size", default=None, type=int, help="Limit on the train set size.")
+parser.add_argument(
+    "--threads", default=1, type=int, help="Maximum number of threads to use."
+)
+parser.add_argument(
+    "--train_size", default=None, type=int, help="Limit on the train set size."
+)
 parser.add_argument("--z_dim", default=100, type=int, help="Dimension of Z.")
 # If you add more arguments, ReCodEx will keep them with your default values.
 
@@ -36,7 +53,9 @@ class GAN(tf.keras.Model):
 
         self._seed = args.seed
         self._z_dim = args.z_dim
-        self._z_prior = tfp.distributions.Normal(tf.zeros(args.z_dim), tf.ones(args.z_dim))
+        self._z_prior = tfp.distributions.Normal(
+            tf.zeros(args.z_dim), tf.ones(args.z_dim)
+        )
 
         # TODO: Define `self.generator` as a Model, which
         # - takes vectors of [args.z_dim] shape on input
@@ -45,6 +64,19 @@ class GAN(tf.keras.Model):
         # - applies output dense layer with MNIST.H * MNIST.W * MNIST.C units
         #   and sigmoid activation
         # - reshapes the output (tf.keras.layers.Reshape) to [MNIST.H, MNIST.W, MNIST.C]
+        self.generator = tf.keras.Sequential(
+            [
+                tf.keras.layers.Input(shape=[args.z_dim]),
+                *[
+                    tf.keras.layers.Dense(args.generator_layers[i], activation="relu")
+                    for i in range(len(args.generator_layers))
+                ],
+                tf.keras.layers.Dense(
+                    MNIST.H * MNIST.W * MNIST.C, activation="sigmoid"
+                ),
+                tf.keras.layers.Reshape([MNIST.H, MNIST.W, MNIST.C]),
+            ]
+        )
 
         # TODO: Define `self.discriminator` as a Model, which
         # - takes input images with shape [MNIST.H, MNIST.W, MNIST.C]
@@ -52,12 +84,27 @@ class GAN(tf.keras.Model):
         # - applies len(args.discriminator_layers) dense layers with ReLU activation,
         #   i-th layer with args.discriminator_layers[i] units
         # - applies output dense layer with one output and a suitable activation function
+        self.discriminator = tf.keras.Sequential(
+            [
+                tf.keras.layers.Input(shape=[MNIST.H, MNIST.W, MNIST.C]),
+                tf.keras.layers.Flatten(),
+                *[
+                    tf.keras.layers.Dense(
+                        args.discriminator_layers[i], activation="relu"
+                    )
+                    for i in range(len(args.discriminator_layers))
+                ],
+                tf.keras.layers.Dense(1, activation="sigmoid"),
+            ]
+        )
 
         self.tb_callback = tf.keras.callbacks.TensorBoard(args.logdir)
 
     # We override `compile`, because we want to use two optimizers.
     def compile(
-        self, discriminator_optimizer: tf.optimizers.Optimizer, generator_optimizer: tf.optimizers.Optimizer
+        self,
+        discriminator_optimizer: tf.optimizers.Optimizer,
+        generator_optimizer: tf.optimizers.Optimizer,
     ) -> None:
         super().compile(
             loss=tf.losses.BinaryCrossentropy(),
@@ -78,6 +125,15 @@ class GAN(tf.keras.Model):
         #   (`tf.ones_like` might come handy).
         # Then, run an optimizer step with respect to generator trainable variables.
         # Do not forget that we created generator_optimizer in the `compile` override.
+        with tf.GradientTape() as gen_tape:
+            samples = self._z_prior.sample(tf.shape(images)[0], seed=self._seed)
+            gen_images = self.generator(samples, training=True)
+            probs = self.discriminator(gen_images, training=True)
+            generator_loss = self.compiled_loss(tf.ones_like(probs), probs)
+
+        self.generator_optimizer.minimize(
+            generator_loss, self.generator.trainable_variables, tape=gen_tape
+        )
 
         # TODO: Discriminator training. Using a Gradient tape:
         # - discriminate `images` with `training=True`, storing
@@ -89,10 +145,28 @@ class GAN(tf.keras.Model):
         #   - `self.compiled_loss` on `discriminated_fake` with suitable targets.
         # Then, run an optimizer step with respect to discriminator trainable variables.
         # Do not forget that we created discriminator_optimizer in the `compile` override.
+        with tf.GradientTape() as dis_tape:
+            discriminated_real = self.discriminator(images, training=True)
+            discriminated_fake = self.discriminator(gen_images, training=True)
+            discriminator_loss = self.compiled_loss(
+                tf.ones_like(discriminated_real), discriminated_real
+            ) + self.compiled_loss(
+                tf.zeros_like(discriminated_fake), discriminated_fake
+            )
+
+        self.discriminator_optimizer.minimize(
+            discriminator_loss, self.discriminator.trainable_variables, tape=dis_tape
+        )
 
         # TODO: Update the discriminator accuracy metric -- call the
         # `self.compiled_metrics.update_state` twice, with the same arguments
         # the `self.compiled_loss` was called during discriminator loss computation.
+        self.compiled_metrics.update_state(
+            tf.ones_like(discriminated_real), discriminated_real
+        )
+        self.compiled_metrics.update_state(
+            tf.zeros_like(discriminated_fake), discriminated_fake
+        )
 
         return {
             "discriminator_loss": discriminator_loss,
@@ -104,27 +178,42 @@ class GAN(tf.keras.Model):
         GRID = 20
 
         # Generate GRIDxGRID images
-        random_images = self.generator(self._z_prior.sample(GRID * GRID, seed=self._seed), training=False)
+        random_images = self.generator(
+            self._z_prior.sample(GRID * GRID, seed=self._seed), training=False
+        )
 
         # Generate GRIDxGRID interpolated images
         if self._z_dim == 2:
             # Use 2D grid for sampled Z
-            starts = tf.stack([-2 * tf.ones(GRID), tf.linspace(-2., 2., GRID)], -1)
-            ends = tf.stack([2 * tf.ones(GRID), tf.linspace(-2., 2., GRID)], -1)
+            starts = tf.stack([-2 * tf.ones(GRID), tf.linspace(-2.0, 2.0, GRID)], -1)
+            ends = tf.stack([2 * tf.ones(GRID), tf.linspace(-2.0, 2.0, GRID)], -1)
         else:
             # Generate random Z
             starts = self._z_prior.sample(GRID, seed=self._seed)
             ends = self._z_prior.sample(GRID, seed=self._seed)
         interpolated_z = tf.concat(
-            [starts[i] + (ends[i] - starts[i]) * tf.linspace(0., 1., GRID)[:, tf.newaxis] for i in range(GRID)],
-            axis=0)
+            [
+                starts[i]
+                + (ends[i] - starts[i]) * tf.linspace(0.0, 1.0, GRID)[:, tf.newaxis]
+                for i in range(GRID)
+            ],
+            axis=0,
+        )
         interpolated_images = self.generator(interpolated_z, training=False)
 
         # Stack the random images, then an empty row, and finally interpolated images
         image = tf.concat(
-            [tf.concat(list(images), axis=1) for images in tf.split(random_images, GRID)] +
-            [tf.zeros([MNIST.H, MNIST.W * GRID, MNIST.C])] +
-            [tf.concat(list(images), axis=1) for images in tf.split(interpolated_images, GRID)], axis=0)
+            [
+                tf.concat(list(images), axis=1)
+                for images in tf.split(random_images, GRID)
+            ]
+            + [tf.zeros([MNIST.H, MNIST.W * GRID, MNIST.C])]
+            + [
+                tf.concat(list(images), axis=1)
+                for images in tf.split(interpolated_images, GRID)
+            ],
+            axis=0,
+        )
         with self.tb_callback._train_writer.as_default(step=epoch):
             tf.summary.image("images", image[tf.newaxis])
 
@@ -136,11 +225,19 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
     tf.config.threading.set_intra_op_parallelism_threads(args.threads)
 
     # Create logdir name
-    args.logdir = os.path.join("logs", "{}-{}-{}".format(
-        os.path.basename(globals().get("__file__", "notebook")),
-        datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        ",".join(("{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v) for k, v in sorted(vars(args).items())))
-    ))
+    args.logdir = os.path.join(
+        "logs",
+        "{}-{}-{}".format(
+            os.path.basename(globals().get("__file__", "notebook")),
+            datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S"),
+            ",".join(
+                (
+                    "{}={}".format(re.sub("(.)[^_]*_?", r"\1", k), v)
+                    for k, v in sorted(vars(args).items())
+                )
+            ),
+        ),
+    )
 
     # Load data
     mnist = MNIST(args.dataset, size={"train": args.train_size})
@@ -154,11 +251,20 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
         discriminator_optimizer=tf.optimizers.Adam(),
         generator_optimizer=tf.optimizers.Adam(),
     )
-    logs = network.fit(train, epochs=args.epochs, callbacks=[
-        tf.keras.callbacks.LambdaCallback(on_epoch_end=network.generate), network.tb_callback])
+    logs = network.fit(
+        train,
+        epochs=args.epochs,
+        callbacks=[
+            tf.keras.callbacks.LambdaCallback(on_epoch_end=network.generate),
+            network.tb_callback,
+        ],
+    )
 
     # Return loss and discriminator accuracy for ReCodEx to validate
-    return {metric: logs.history[metric][-1] for metric in ["loss", "discriminator_accuracy"]}
+    return {
+        metric: logs.history[metric][-1]
+        for metric in ["loss", "discriminator_accuracy"]
+    }
 
 
 if __name__ == "__main__":
