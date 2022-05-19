@@ -137,5 +137,6 @@ logs/
 # custom datasets
 czech_cac.zip
 czech_cnec.zip
+czech_facebook.zip
 
 wandb/
