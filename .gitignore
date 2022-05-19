@@ -138,5 +138,6 @@ logs/
 czech_cac.zip
 czech_cnec.zip
 czech_facebook.zip
+*.tfrecord
 
 wandb/
