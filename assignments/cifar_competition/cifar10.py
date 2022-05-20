@@ -1,1 +1,1 @@
-/home/tsandrini/Study/MFF/NPFL114-hluboke_uceni/NPFL114-deep_fuflearning/labs/04/cifar10.py
+../../labs/04/cifar10.py
