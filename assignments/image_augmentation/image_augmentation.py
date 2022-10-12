@@ -71,6 +71,7 @@ def main(args: argparse.Namespace) -> Dict[str, float]:
         loss=tf.losses.SparseCategoricalCrossentropy(),
         metrics=[tf.metrics.SparseCategoricalAccuracy(name="accuracy")],
     )
+    model.summary()
     tb_callback = tf.keras.callbacks.TensorBoard(args.logdir)
 
     # TODO: Create data augmenting `tf.keras.preprocessing.image.ImageDataGenerator`.
